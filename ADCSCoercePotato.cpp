@@ -106,6 +106,7 @@ void usage()
 		"-u Domain Username\n"
 		"-p password\n"
 		"-d Domain Name\n"
+		"-s session (it seems not working)\n"
 	);
 	printf("\n\n");
 	printf("Example: ADCSCoercePotato.exe -m 192.168.212.22 -k 192.168.1.88 -u myuser -p mypass -d mydomain.domain\n");
