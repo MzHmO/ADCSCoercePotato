@@ -19,7 +19,7 @@ public:
     DWORD startRPCConnectionThread();
 	DWORD startCOMListenerThread();
 	int startCOMListener(void);
-	int triggerDCOM();
+	int triggerDCOM(int);
 	
 	SOCKET ListenSocket = INVALID_SOCKET;
 	SOCKET ClientSocket = INVALID_SOCKET;
